@@ -1,12 +1,10 @@
 import os
 import sys
 import time
-import subprocess
-from pathlib import Path
+import socket
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -20,45 +18,38 @@ WELCOME = """
 |  Because Jake is STILL too lazy.                              |
 |                                                               |
 |  What this script does:                                       |
+|    - Connects to the browser opened by the downloader script  |
 |    - Scans all template pages on a Dokio hub                  |
 |    - Opens each template's Edit Settings page                 |
-|    - Fills in the 'GitHub repo folder' field with the         |
-|      correct folder name: DokioID - Template Name             |
+|    - Fills in the 'GitHub repo folder' field with:            |
+|      DokioID - Template Name                                  |
 |    - Clicks 'Update' to save                                  |
 |    - Skips Static PDF and Archive templates                   |
-|    - Skips templates that already have a folder name set      |
+|    - Skips templates that already have a folder name set       |
 |                                                               |
-|  Example folder name it sets:                                 |
-|    Q33D3U - Hyperlocal Email 2025 - with mask 190326          |
+|  NOTE: Run template_downloader.py first! This script reuses   |
+|  the same browser window (no need to open a new one).         |
 |                                                               |
 +==============================================================+
 """
 
-BROWSERS = {
-    "1": {
-        "name": "Google Chrome",
-        "binary": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "type": "chrome",
-    },
-    "2": {
-        "name": "Chrome Canary",
-        "binary": "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
-        "type": "chrome",
-    },
-    "3": {
-        "name": "Brave",
-        "binary": "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-        "type": "chrome",
-    },
-    "4": {
-        "name": "Firefox",
-        "binary": "/Applications/Firefox.app/Contents/MacOS/firefox",
-        "type": "firefox",
-    },
-}
+
+def choose_environment():
+    print("\nStaging or Production?")
+    print("  [1] Production  (e.g. https://natt.dokio.co)")
+    print("  [2] Staging     (e.g. https://natt.staging.dokio.xyz)")
+    while True:
+        val = input("\n  Enter number: ").strip()
+        if val == "1":
+            return "production"
+        elif val == "2":
+            return "staging"
+        print("  Please enter 1 or 2.")
 
 
 def choose_hub():
+    env = choose_environment()
+
     print("\nWhich Dokio hub?")
     print("  Type the hub name or full URL.")
     print("  Examples: bupa-sam, poolwerx, ipa, australian-unity")
@@ -70,76 +61,47 @@ def choose_hub():
         if val.startswith("http"):
             val = val.split("//")[1].split(".")[0]
         hub_name = val
-        base_url = f"https://{hub_name}.dokio.co"
+
+        if env == "staging":
+            base_url = f"https://{hub_name}.staging.dokio.xyz"
+        else:
+            base_url = f"https://{hub_name}.dokio.co"
+
         templates_url = f"{base_url}/admin/templates"
+        print(f"  Environment: {env}")
         print(f"  Hub URL    : {base_url}")
         return hub_name, base_url, templates_url
 
 
-def choose_browser():
-    print("\nWhich browser?")
-    for key, info in BROWSERS.items():
-        exists = os.path.exists(info["binary"])
-        status = "installed" if exists else "not found"
-        print(f"  [{key}] {info['name']}  ({status})")
-    while True:
-        choice = input("\n  Enter number: ").strip()
-        if choice in BROWSERS:
-            return BROWSERS[choice]
-        print("  Please enter a valid number (1-4).")
+def check_debug_browser():
+    """Check if a debug browser is running on port 9222."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(1)
+        sock.connect(("127.0.0.1", 9222))
+        sock.close()
+        return True
+    except (ConnectionRefusedError, OSError):
+        return False
 
 
-def launch_browser_remote(browser_info):
-    binary = browser_info["binary"]
-    name = browser_info["name"]
+def connect_to_browser():
+    """Connect to the already-open debug browser from the downloader script."""
+    if not check_debug_browser():
+        print("\n  No debug browser found on port 9222!")
+        print("\n  Run template_downloader.py first — it opens the browser for you.")
+        print("  Or launch your browser manually with:")
+        print('    --remote-debugging-port=9222 --user-data-dir=/tmp/dokio-debug')
+        input("\n  Press Enter once the browser is open, or Ctrl+C to quit...")
 
-    if not os.path.exists(binary):
-        print(f"\n  {name} not found at: {binary}")
-        print(f"  Please launch it manually with: --remote-debugging-port=9222")
-        input("  Press Enter once the browser is open and you're logged in via Okta...")
-        return None
+        if not check_debug_browser():
+            print("\n  Still can't find a debug browser. Exiting.")
+            sys.exit(1)
 
-    debug_dir = "/tmp/dokio-debug"
-
-    if browser_info["type"] == "firefox":
-        cmd = [binary, "--remote-debugging-port", "9222", "--profile", debug_dir]
-    else:
-        cmd = [binary, "--remote-debugging-port=9222", f"--user-data-dir={debug_dir}"]
-
-    print(f"\n  Launching {name}...")
-    subprocess.Popen(
-        cmd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-
-    print(f"  Waiting for {name} to start...")
-    time.sleep(4)
-
-    print(f"  {name} should now be open!")
-    print(f"\n  In the browser window:")
-    print(f"    1. Log in via Okta if needed")
-    print(f"    2. Come back to THIS terminal")
-    input(f"\n  Press Enter when you're logged in and ready...")
-    return True
-
-
-def connect_to_browser(browser_info):
-    if browser_info["type"] == "firefox":
-        options = FirefoxOptions()
-        options.add_argument("--remote-debugging-port=9222")
-        if os.path.exists(browser_info["binary"]):
-            options.binary_location = browser_info["binary"]
-        driver = webdriver.Firefox(options=options)
-    else:
-        options = Options()
-        options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-        if os.path.exists(browser_info["binary"]):
-            options.binary_location = browser_info["binary"]
-        driver = webdriver.Chrome(options=options)
-
-    print(f"  Connected to {browser_info['name']}!")
+    options = Options()
+    options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
+    driver = webdriver.Chrome(options=options)
+    print(f"  Connected to browser! (page: {driver.title})")
     return driver
 
 
@@ -150,7 +112,6 @@ def sanitize_folder_name(name):
 
 
 def collect_all_templates(driver, templates_url):
-    """Collect template name, ID, and edit settings URL from all pages."""
     all_templates = []
     page = 1
 
@@ -184,7 +145,6 @@ def collect_all_templates(driver, templates_url):
                 if not name or not detail_url:
                     continue
 
-                # Skip Static PDF and Archive
                 try:
                     details_els = row.find_elements(By.CSS_SELECTOR, "div[class*='_column']")
                     details_text = " ".join(el.text for el in details_els).lower()
@@ -195,7 +155,6 @@ def collect_all_templates(driver, templates_url):
                     skipped += 1
                     continue
 
-                # Build edit settings URL: /admin/email_templates/Q33D3U -> /admin/email_templates/Q33D3U/edit
                 edit_url = detail_url.rstrip("/") + "/edit"
                 dokio_id = detail_url.rstrip("/").split("/")[-1]
                 folder_name = sanitize_folder_name(f"{dokio_id} - {name}")
@@ -224,42 +183,27 @@ def collect_all_templates(driver, templates_url):
 
 
 def update_github_folder(driver, template):
-    """Go to edit settings page, fill GitHub folder, and save."""
     name = template["name"]
     folder_name = template["folder_name"]
     edit_url = template["edit_url"]
 
     driver.get(edit_url)
 
-    # Wait for the page to load
-    try:
-        WebDriverWait(driver, PAGE_WAIT).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[id*='github_repo_folder']"))
-        )
-    except Exception:
-        # Try alternative: look for input by name attribute
-        try:
-            WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name*='github_repo_folder']"))
-            )
-        except Exception:
-            print(f"    Could not find GitHub folder input on edit page")
-            return False
-
-    time.sleep(0.5)
-
-    # Find the GitHub repo folder input
+    # Wait for GitHub folder input to appear
     github_input = None
     selectors = [
         "input[id*='github_repo_folder']",
         "input[name*='github_repo_folder']",
         "input[name*='[github_repo_folder]']",
     ]
+
     for sel in selectors:
         try:
+            WebDriverWait(driver, PAGE_WAIT).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, sel))
+            )
             github_input = driver.find_element(By.CSS_SELECTOR, sel)
-            if github_input:
-                break
+            break
         except Exception:
             continue
 
@@ -267,37 +211,35 @@ def update_github_folder(driver, template):
         print(f"    Could not find GitHub folder input")
         return False
 
+    time.sleep(0.3)
+
     # Check if already filled
     current_value = github_input.get_attribute("value").strip()
     if current_value:
         print(f"    Already set: {current_value} (skipping)")
         return "skipped"
 
-    # Clear and fill in the folder name
+    # Clear and fill
     github_input.clear()
     github_input.send_keys(folder_name)
     time.sleep(0.3)
 
-    # Verify it was entered
+    # Verify
     entered = github_input.get_attribute("value")
     if entered != folder_name:
         print(f"    Input mismatch! Expected: {folder_name}, Got: {entered}")
         return False
 
-    # Click the Update/Save button
+    # Click Update button
     save_btn = None
-    save_selectors = [
-        "button[type='submit']",
-        "input[type='submit']",
-        "a.Button._type_primary",
-        "button._type_primary",
-    ]
-    for sel in save_selectors:
+
+    # Try common button selectors
+    for sel in ["button[type='submit']", "input[type='submit']"]:
         try:
             btns = driver.find_elements(By.CSS_SELECTOR, sel)
             for btn in btns:
-                btn_text = btn.text.strip().lower()
-                if "update" in btn_text or "save" in btn_text:
+                text = btn.text.strip().lower() or btn.get_attribute("value").strip().lower()
+                if "update" in text or "save" in text:
                     save_btn = btn
                     break
             if save_btn:
@@ -305,17 +247,20 @@ def update_github_folder(driver, template):
         except Exception:
             continue
 
-    # Also try finding by text content
+    # Try XPath for links/buttons with "Update" text
     if not save_btn:
         try:
             save_btn = driver.find_element(
-                By.XPATH, "//button[contains(text(),'Update')] | //input[@value='Update'] | //a[contains(text(),'Update')]"
+                By.XPATH,
+                "//button[contains(text(),'Update')] | "
+                "//input[contains(@value,'Update')] | "
+                "//a[contains(text(),'Update')]"
             )
         except Exception:
             pass
 
     if not save_btn:
-        print(f"    Could not find Save/Update button")
+        print(f"    Could not find Update button")
         return False
 
     save_btn.click()
@@ -358,21 +303,18 @@ if __name__ == "__main__":
     print(WELCOME)
 
     hub_name, base_url, templates_url = choose_hub()
-    browser_info = choose_browser()
 
     print(f"\n" + "-" * 60)
-    print(f"  Hub      : {hub_name} ({base_url})")
-    print(f"  Browser  : {browser_info['name']}")
+    print(f"  Hub : {hub_name} ({base_url})")
     print("-" * 60)
 
-    launch_browser_remote(browser_info)
-
-    print(f"\nConnecting to {browser_info['name']}...")
+    print(f"\nConnecting to browser...")
     try:
-        driver = connect_to_browser(browser_info)
+        driver = connect_to_browser()
     except Exception as e:
-        print(f"\nCould not connect: {e}")
-        print("Make sure the browser is open and you're logged in.")
+        print(f"\nCould not connect to browser: {e}")
+        print("\nRun template_downloader.py first to open the browser,")
+        print("or launch your browser with --remote-debugging-port=9222")
         sys.exit(1)
 
     try:
@@ -394,4 +336,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n\nStopped by user.")
     finally:
-        print("\nBrowser window left open. Done!")
+        print("\nDone!")

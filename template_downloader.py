@@ -9,7 +9,6 @@ from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -25,8 +24,7 @@ WELCOME = """
 |                                                               |
 |  What this script does:                                       |
 |    - Type a hub name like 'bupa-sam' or 'poolwerx'            |
-|    - Pick your browser (Chrome, Firefox, Brave)               |
-|    - Auto-launches browser with remote debugging              |
+|    - Pick your browser - it launches with remote debugging    |
 |    - Scans ALL pages of templates automatically               |
 |    - Skips Static PDF and Archive templates                   |
 |    - Downloads, unzips into properly named folders            |
@@ -42,31 +40,37 @@ BROWSERS = {
     "1": {
         "name": "Google Chrome",
         "binary": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "type": "chrome",
     },
     "2": {
         "name": "Chrome Canary",
         "binary": "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
-        "type": "chrome",
     },
     "3": {
         "name": "Brave",
         "binary": "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-        "type": "chrome",
-    },
-    "4": {
-        "name": "Firefox",
-        "binary": "/Applications/Firefox.app/Contents/MacOS/firefox",
-        "type": "firefox",
     },
 }
 
 
+def choose_environment():
+    print("\nStaging or Production?")
+    print("  [1] Production  (e.g. https://poolwerx.dokio.co)")
+    print("  [2] Staging     (e.g. https://poolwerx.staging.dokio.xyz)")
+    while True:
+        val = input("\n  Enter number: ").strip()
+        if val == "1":
+            return "production"
+        elif val == "2":
+            return "staging"
+        print("  Please enter 1 or 2.")
+
+
 def choose_hub():
+    env = choose_environment()
+
     print("\nWhich Dokio hub?")
     print("  Type the hub name or full URL.")
     print("  Examples: bupa-sam, poolwerx, ipa, australian-unity")
-    print("  Or: https://bupa-sam.dokio.co")
     while True:
         val = input("\n  Hub: ").strip().lower().rstrip("/")
         if not val:
@@ -75,10 +79,16 @@ def choose_hub():
         if val.startswith("http"):
             val = val.split("//")[1].split(".")[0]
         hub_name = val
-        base_url = f"https://{hub_name}.dokio.co"
+
+        if env == "staging":
+            base_url = f"https://{hub_name}.staging.dokio.xyz"
+        else:
+            base_url = f"https://{hub_name}.dokio.co"
+
         templates_url = f"{base_url}/admin/templates"
         download_dir = str(Path.home() / "Documents" / f"{hub_name}-templates")
         os.makedirs(download_dir, exist_ok=True)
+        print(f"  Environment: {env}")
         print(f"  Hub URL    : {base_url}")
         print(f"  Save to    : {download_dir}")
         return hub_name, base_url, templates_url, download_dir
@@ -94,10 +104,30 @@ def choose_browser():
         choice = input("\n  Enter number: ").strip()
         if choice in BROWSERS:
             return BROWSERS[choice]
-        print("  Please enter a valid number (1-4).")
+        print("  Please enter a valid number (1-3).")
 
 
-def launch_browser_remote(browser_info):
+def is_debug_browser_running():
+    """Check if a browser with remote debugging is already running on port 9222."""
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(1)
+        sock.connect(("127.0.0.1", 9222))
+        sock.close()
+        return True
+    except (ConnectionRefusedError, OSError):
+        return False
+
+
+def launch_browser(browser_info):
+    """Launch browser with remote debugging, or skip if one is already running."""
+    if is_debug_browser_running():
+        print("\n  Debug browser already running on port 9222 - reusing it!")
+        print("  (If you need a different browser, close it and re-run.)")
+        input("\n  Press Enter to continue...")
+        return
+
     binary = browser_info["binary"]
     name = browser_info["name"]
 
@@ -105,18 +135,12 @@ def launch_browser_remote(browser_info):
         print(f"\n  {name} not found at: {binary}")
         print(f"  Please launch it manually with: --remote-debugging-port=9222")
         input("  Press Enter once the browser is open and you're logged in via Okta...")
-        return None
+        return
 
     debug_dir = "/tmp/dokio-debug"
-
-    if browser_info["type"] == "firefox":
-        cmd = [binary, "--remote-debugging-port", "9222", "--profile", debug_dir]
-    else:
-        cmd = [binary, "--remote-debugging-port=9222", f"--user-data-dir={debug_dir}"]
+    cmd = [binary, "--remote-debugging-port=9222", f"--user-data-dir={debug_dir}"]
 
     print(f"\n  Launching {name}...")
-
-    # Launch browser as a background process (doesn't block the script)
     subprocess.Popen(
         cmd,
         stdout=subprocess.DEVNULL,
@@ -132,31 +156,20 @@ def launch_browser_remote(browser_info):
     print(f"    1. Log in via Okta if needed")
     print(f"    2. Come back to THIS terminal")
     input(f"\n  Press Enter when you're logged in and ready...")
-    return True
 
 
-def connect_to_browser(browser_info, download_dir):
-    if browser_info["type"] == "firefox":
-        options = FirefoxOptions()
-        options.add_argument("--remote-debugging-port=9222")
-        if os.path.exists(browser_info["binary"]):
-            options.binary_location = browser_info["binary"]
-        driver = webdriver.Firefox(options=options)
-    else:
-        options = Options()
-        options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-        if os.path.exists(browser_info["binary"]):
-            options.binary_location = browser_info["binary"]
-        prefs = {
-            "download.default_directory": download_dir,
-            "download.prompt_for_download": False,
-            "download.directory_upgrade": True,
-            "safebrowsing.enabled": True,
-        }
-        options.add_experimental_option("prefs", prefs)
-        driver = webdriver.Chrome(options=options)
-
-    print(f"  Connected to {browser_info['name']}!")
+def connect_to_browser(download_dir):
+    options = Options()
+    options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
+    prefs = {
+        "download.default_directory": download_dir,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "safebrowsing.enabled": True,
+    }
+    options.add_experimental_option("prefs", prefs)
+    driver = webdriver.Chrome(options=options)
+    print(f"  Connected! (page: {driver.title})")
     return driver
 
 
@@ -264,7 +277,6 @@ def handle_file(original_path, safe_name, download_dir):
         folder = os.path.join(download_dir, safe_name)
         os.makedirs(folder, exist_ok=True)
         original_name = Path(original_path).name
-        # Remove the _tmp_ prefix we added
         if original_name.startswith("_tmp_"):
             original_name = original_name[5:]
         dest = os.path.join(folder, original_name)
@@ -299,11 +311,10 @@ def download_all(driver, session, templates, download_dir):
                 continue
 
             ext = ".zip"
-            original_filename = None
             cd = response.headers.get("Content-Disposition", "")
             if "filename=" in cd:
-                original_filename = cd.split("filename=")[-1].strip().strip('"').strip("'")
-                ext = Path(original_filename).suffix or ext
+                fname = cd.split("filename=")[-1].strip().strip('"').strip("'")
+                ext = Path(fname).suffix or ext
             elif "application/pdf" in response.headers.get("Content-Type", ""):
                 ext = ".pdf"
 
@@ -342,11 +353,11 @@ if __name__ == "__main__":
     print(f"  Save to  : {download_dir}")
     print("-" * 60)
 
-    launch_browser_remote(browser_info)
+    launch_browser(browser_info)
 
-    print(f"\nConnecting to {browser_info['name']}...")
+    print(f"\nConnecting to browser...")
     try:
-        driver = connect_to_browser(browser_info, download_dir)
+        driver = connect_to_browser(download_dir)
     except Exception as e:
         print(f"\nCould not connect: {e}")
         print("Make sure the browser is open and you're logged in.")
@@ -370,3 +381,4 @@ if __name__ == "__main__":
         print("\n\nStopped by user.")
     finally:
         print("\nBrowser window left open. Done!")
+        print("You can now run: python3 github_folder_updater.py")
