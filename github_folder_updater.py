@@ -213,11 +213,14 @@ def update_github_folder(driver, template):
 
     time.sleep(0.3)
 
-    # Check if already filled
+    # Check current value
     current_value = github_input.get_attribute("value").strip()
-    if current_value:
-        print(f"    Already set: {current_value} (skipping)")
+    if current_value == folder_name:
+        print(f"    Already correct: {current_value} (skipping)")
         return "skipped"
+    elif current_value:
+        print(f"    Wrong value: {current_value}")
+        print(f"    Updating to: {folder_name}")
 
     # Clear and fill
     github_input.clear()
