@@ -31,7 +31,7 @@ WELCOME = """
 |    - Folder named: 746K64 - Template Name                     |
 |    - Files inside keep their original names                   |
 |                                                               |
-|  Auto-saves to: ~/Documents/<hub-name>-templates/             |
+|  Auto-saves to: ~/Documents/Dokio Templates/<hub>-templates/  |
 |                                                               |
 +==============================================================+
 """
@@ -54,8 +54,8 @@ BROWSERS = {
 
 def choose_environment():
     print("\nStaging or Production?")
-    print("  [1] Production  (e.g. https://natt.dokio.co)")
-    print("  [2] Staging     (e.g. https://natt.staging.dokio.xyz)")
+    print("  [1] Production  (e.g. https://poolwerx.dokio.co)")
+    print("  [2] Staging     (e.g. https://poolwerx.staging.dokio.xyz)")
     while True:
         val = input("\n  Enter number: ").strip()
         if val == "1":
@@ -86,7 +86,7 @@ def choose_hub():
             base_url = f"https://{hub_name}.dokio.co"
 
         templates_url = f"{base_url}/admin/templates"
-        download_dir = str(Path.home() / "Documents" / f"{hub_name}-templates")
+        download_dir = str(Path.home() / "Documents" / "Dokio Templates" / f"{hub_name}-templates")
         os.makedirs(download_dir, exist_ok=True)
         print(f"  Environment: {env}")
         print(f"  Hub URL    : {base_url}")
@@ -173,7 +173,20 @@ def connect_to_browser(download_dir):
     return driver
 
 
+def clean_template_name(name):
+    """Remove WIP markers like *WIP*, _WIP_, WIP, (WIP), [WIP] from the name."""
+    import re
+    # Remove variations: *WIP*, _WIP_, (WIP), [WIP], WIP with surrounding whitespace
+    name = re.sub(r'[\*_\(\[\s]*WIP[\*_\)\]\s]*', ' ', name, flags=re.IGNORECASE)
+    # Clean up extra spaces and dashes left behind
+    name = re.sub(r'\s+', ' ', name)
+    name = re.sub(r'^[\s\-]+|[\s\-]+$', '', name)
+    name = re.sub(r'\s*-\s*-\s*', ' - ', name)
+    return name.strip()
+
+
 def sanitize_filename(name):
+    name = clean_template_name(name)
     for ch in r'\/:*?"<>|':
         name = name.replace(ch, "_")
     return name.strip()

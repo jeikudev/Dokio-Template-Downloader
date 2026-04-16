@@ -17,7 +17,7 @@ Two Python scripts for managing Dokio templates. Run them in order — the first
 - Skips Static PDF and Archive templates
 - Downloads, unzips, and organizes into named folders
 - Folder: `Q33D3U - Hyperlocal Email 2025` / files inside: original names untouched
-- Saves to `~/Documents/<hub-name>-templates/`
+- Saves to `~/Documents/Dokio Templates/<hub-name>-templates/`
 
 ### `github_folder_updater.py` — Set GitHub repo folder names
 
@@ -98,7 +98,7 @@ Which Dokio hub?
   Hub: ipa
   Environment: production
   Hub URL    : https://ipa.dokio.co
-  Save to    : ~/Documents/ipa-templates
+  Save to    : ~/Documents/Dokio Templates/ipa-templates
 
 Which browser?
   [1] Google Chrome  (installed)
@@ -144,7 +144,7 @@ Scanning templates...
   Downloaded : 142
   Failed     : 0
 
-  Files saved to: ~/Documents/ipa-templates
+  Files saved to: ~/Documents/Dokio Templates/ipa-templates
 ==============================================================
 
 Browser window left open. Done!
@@ -222,7 +222,7 @@ Both scripts ask you to choose before entering the hub name. Make sure you pick 
 Saved to your **Documents** folder, named after the hub:
 
 ```
-~/Documents/ipa-templates/
+~/Documents/Dokio Templates/ipa-templates/
 ├── Q33D3U - Hyperlocal Email 2025 - with mask 190326/
 │   ├── index.html
 │   ├── data.yaml

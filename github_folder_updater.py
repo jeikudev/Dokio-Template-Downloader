@@ -36,8 +36,8 @@ WELCOME = """
 
 def choose_environment():
     print("\nStaging or Production?")
-    print("  [1] Production  (e.g. https://natt.dokio.co)")
-    print("  [2] Staging     (e.g. https://natt.staging.dokio.xyz)")
+    print("  [1] Production  (e.g. https://poolwerx.dokio.co)")
+    print("  [2] Staging     (e.g. https://poolwerx.staging.dokio.xyz)")
     while True:
         val = input("\n  Enter number: ").strip()
         if val == "1":
@@ -105,7 +105,18 @@ def connect_to_browser():
     return driver
 
 
+def clean_template_name(name):
+    """Remove WIP markers like *WIP*, _WIP_, WIP, (WIP), [WIP] from the name."""
+    import re
+    name = re.sub(r'[\*_\(\[\s]*WIP[\*_\)\]\s]*', ' ', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+', ' ', name)
+    name = re.sub(r'^[\s\-]+|[\s\-]+$', '', name)
+    name = re.sub(r'\s*-\s*-\s*', ' - ', name)
+    return name.strip()
+
+
 def sanitize_folder_name(name):
+    name = clean_template_name(name)
     for ch in r'\/:*?"<>|':
         name = name.replace(ch, "_")
     return name.strip()
