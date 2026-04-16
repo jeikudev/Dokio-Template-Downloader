@@ -10,6 +10,7 @@ Two Python scripts for managing Dokio templates. Run them in order — the first
 
 ### `template_downloader.py` — Download all templates
 
+- Choose staging or production environment
 - Type a hub name like `ipa` or `poolwerx` — no full URLs needed
 - Picks your browser and launches it with remote debugging
 - Scans ALL pages automatically (however many there are)
@@ -85,10 +86,17 @@ The script will walk you through everything:
 |          Dokio Template Downloader Script  v3.0               |
 +==============================================================+
 
+Staging or Production?
+  [1] Production  (e.g. https://natt.dokio.co)
+  [2] Staging     (e.g. https://natt.staging.dokio.xyz)
+
+  Enter number: 1
+
 Which Dokio hub?
   Examples: bupa-sam, poolwerx, ipa, australian-unity
 
   Hub: ipa
+  Environment: production
   Hub URL    : https://ipa.dokio.co
   Save to    : ~/Documents/ipa-templates
 
@@ -158,9 +166,16 @@ python3 github_folder_updater.py
 |       Dokio GitHub Folder Name Updater Script  v1.0           |
 +==============================================================+
 
+Staging or Production?
+  [1] Production  (e.g. https://natt.dokio.co)
+  [2] Staging     (e.g. https://natt.staging.dokio.xyz)
+
+  Enter number: 1
+
 Which Dokio hub?
   Hub: ipa
-  Hub URL : https://ipa.dokio.co
+  Environment: production
+  Hub URL    : https://ipa.dokio.co
 
 Connecting to browser...
   Connected to browser! (page: Templates)
@@ -188,6 +203,17 @@ Ready to update 142 templates. Continue? (y/n): y
 
 Done!
 ```
+
+---
+
+## Staging vs Production
+
+| Environment | URL pattern | Example |
+|-------------|-------------|---------|
+| **Production** | `https://<hub>.dokio.co` | `https://poolwerx.dokio.co` |
+| **Staging** | `https://<hub>.staging.dokio.xyz` | `https://poolwerx.staging.dokio.xyz` |
+
+Both scripts ask you to choose before entering the hub name. Make sure you pick the same environment for both scripts.
 
 ---
 
@@ -271,12 +297,12 @@ Your SSH key isn't set up for GitHub. Ask Jake or IT to help you add one, or clo
 
 - **Same hub, both scripts?** Run downloader first, then updater. Don't close the browser between them.
 - **Different hub?** Just run the scripts again with the new hub name. The browser stays open.
+- **Staging then production?** Just pick the right environment each time — the scripts handle the URL difference.
 - **Already downloaded before?** The downloader won't overwrite existing folders — it adds `_1`, `_2` suffixes if there's a conflict.
 - **Want to stop mid-way?** Press `Ctrl+C` at any time. The browser stays open and you can re-run.
 - **Re-running the updater?** It skips templates that already have a GitHub folder set, so it's safe to run multiple times.
 - **Pulling updates?** `cd Dokio-Template-Downloader && git pull`
 
 ---
-
 
 *Made by Jake for Natt & Leo ❤︎⁠ · Internal use only*

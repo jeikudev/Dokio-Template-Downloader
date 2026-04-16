@@ -54,8 +54,8 @@ BROWSERS = {
 
 def choose_environment():
     print("\nStaging or Production?")
-    print("  [1] Production  (e.g. https://poolwerx.dokio.co)")
-    print("  [2] Staging     (e.g. https://poolwerx.staging.dokio.xyz)")
+    print("  [1] Production  (e.g. https://natt.dokio.co)")
+    print("  [2] Staging     (e.g. https://natt.staging.dokio.xyz)")
     while True:
         val = input("\n  Enter number: ").strip()
         if val == "1":
