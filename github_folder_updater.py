@@ -193,6 +193,138 @@ def collect_all_templates(driver, templates_url):
     return all_templates
 
 
+def find_github_input(driver):
+    """Find the GitHub repo folder input using multiple strategies."""
+    # Strategy 1: CSS selectors for known patterns
+    css_selectors = [
+        "input[id*='github_repo_folder']",
+        "input[name*='github_repo_folder']",
+        "input[name*='[github_repo_folder]']",
+    ]
+    for sel in css_selectors:
+        try:
+            els = driver.find_elements(By.CSS_SELECTOR, sel)
+            if els:
+                return els[0]
+        except Exception:
+            continue
+
+    # Strategy 2: Find by nearby label text "GitHub repo folder"
+    try:
+        labels = driver.find_elements(By.XPATH,
+            "//*[contains(text(),'GitHub repo folder') or contains(text(),'GitHub Repo Folder')]"
+        )
+        for label in labels:
+            # Look for input in the same container
+            parent = label.find_element(By.XPATH, "./ancestor::div[contains(@class,'Container') or contains(@class,'Column') or contains(@class,'Field')]")
+            inputs = parent.find_elements(By.TAG_NAME, "input")
+            for inp in inputs:
+                if inp.get_attribute("type") in ["text", "", None]:
+                    return inp
+    except Exception:
+        pass
+
+    # Strategy 3: JavaScript - find all text inputs and match by name/id
+    try:
+        result = driver.execute_script("""
+            var inputs = document.querySelectorAll('input[type="text"], input:not([type])');
+            for (var i = 0; i < inputs.length; i++) {
+                var name = (inputs[i].name || '').toLowerCase();
+                var id = (inputs[i].id || '').toLowerCase();
+                if (name.includes('github') || id.includes('github')) {
+                    return inputs[i];
+                }
+            }
+            return null;
+        """)
+        if result:
+            return result
+    except Exception:
+        pass
+
+    return None
+
+
+def find_submit_button(driver):
+    """Find the Update/Save submit button using multiple strategies."""
+    # Strategy 1: ConfirmBar - the green Update button at the bottom
+    try:
+        bar = driver.find_element(By.CSS_SELECTOR, "div.ConfirmBar, div[class*='ConfirmBar']")
+        btns = bar.find_elements(By.CSS_SELECTOR, "button, input[type='submit'], a")
+        for btn in btns:
+            text = (btn.text or btn.get_attribute("value") or "").strip().lower()
+            if "update" in text:
+                return btn
+    except Exception:
+        pass
+
+    # Strategy 2: Submit buttons with Update/Save text
+    for sel in ["button[type='submit']", "input[type='submit']", "button", "a.Button"]:
+        try:
+            btns = driver.find_elements(By.CSS_SELECTOR, sel)
+            for btn in btns:
+                text = (btn.text or btn.get_attribute("value") or "").strip().lower()
+                if "update" in text:
+                    return btn
+        except Exception:
+            continue
+
+    # Strategy 3: XPath broad search
+    try:
+        return driver.find_element(By.XPATH,
+            "//button[contains(translate(text(),'UPDATE','update'),'update')] | "
+            "//input[contains(translate(@value,'UPDATE','update'),'update')] | "
+            "//a[contains(translate(text(),'UPDATE','update'),'update')]"
+        )
+    except Exception:
+        pass
+
+    # Strategy 4: Any submit button on the page
+    try:
+        btns = driver.find_elements(By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")
+        if btns:
+            return btns[-1]
+    except Exception:
+        pass
+
+    return None
+
+
+def expand_developer_section(driver):
+    """Click the Developer section header to expand it if collapsed."""
+    try:
+        # Find the Developer heading/toggle
+        dev_toggles = driver.find_elements(By.XPATH,
+            "//*[contains(@id,'developer')] | "
+            "//div[contains(@class,'Heading') and contains(text(),'Developer')]"
+        )
+        for toggle in dev_toggles:
+            try:
+                # Check if the section is collapsed by looking for hidden input
+                parent = toggle.find_element(By.XPATH, "./ancestor::div[contains(@class,'Container')]")
+                inputs = parent.find_elements(By.TAG_NAME, "input")
+                visible_inputs = [i for i in inputs if i.is_displayed() and i.get_attribute("type") == "text"]
+                if not visible_inputs:
+                    # Section is collapsed, click to expand
+                    toggle.click()
+                    time.sleep(0.5)
+                    return True
+            except Exception:
+                continue
+
+        # Also try clicking on Container#developer directly
+        try:
+            dev_container = driver.find_element(By.CSS_SELECTOR, "div.Container#developer, div[id='developer']")
+            dev_container.click()
+            time.sleep(0.5)
+        except Exception:
+            pass
+
+    except Exception:
+        pass
+    return False
+
+
 def update_github_folder(driver, template):
     name = template["name"]
     folder_name = template["folder_name"]
@@ -200,87 +332,89 @@ def update_github_folder(driver, template):
 
     driver.get(edit_url)
 
-    # Wait for GitHub folder input to appear
-    github_input = None
-    selectors = [
-        "input[id*='github_repo_folder']",
-        "input[name*='github_repo_folder']",
-        "input[name*='[github_repo_folder]']",
-    ]
+    # Wait for page to load
+    time.sleep(2)
 
-    for sel in selectors:
-        try:
-            WebDriverWait(driver, PAGE_WAIT).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, sel))
-            )
-            github_input = driver.find_element(By.CSS_SELECTOR, sel)
-            break
-        except Exception:
-            continue
+    # Scroll to bottom to load all sections
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    time.sleep(0.5)
+
+    # Expand the Developer section if it's collapsed
+    expand_developer_section(driver)
+    time.sleep(0.5)
+
+    # Scroll to bottom again after expanding
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    time.sleep(0.5)
+
+    # Find the GitHub input
+    github_input = find_github_input(driver)
 
     if not github_input:
-        print(f"    Could not find GitHub folder input")
+        print(f"    Could not find GitHub folder input on: {edit_url}")
         return False
 
+    # Scroll the input into view
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", github_input)
     time.sleep(0.3)
 
     # Check current value
     current_value = github_input.get_attribute("value").strip()
     if current_value == folder_name:
-        print(f"    Already correct: {current_value} (skipping)")
+        print(f"    Already correct (skipping)")
         return "skipped"
     elif current_value:
-        print(f"    Wrong value: {current_value}")
+        print(f"    Current: {current_value}")
         print(f"    Updating to: {folder_name}")
+    else:
+        print(f"    Empty, setting to: {folder_name}")
 
-    # Clear and fill
-    github_input.clear()
+    # Click the input field first to focus it
+    github_input.click()
+    time.sleep(0.2)
+
+    # Select all existing text and delete it
+    from selenium.webdriver.common.keys import Keys
+    github_input.send_keys(Keys.COMMAND + "a")
+    github_input.send_keys(Keys.DELETE)
+    time.sleep(0.2)
+
+    # Type the folder name
     github_input.send_keys(folder_name)
-    time.sleep(0.3)
+    time.sleep(0.5)
 
     # Verify
-    entered = github_input.get_attribute("value")
+    entered = github_input.get_attribute("value").strip()
     if entered != folder_name:
-        print(f"    Input mismatch! Expected: {folder_name}, Got: {entered}")
+        print(f"    Input mismatch! Expected: {folder_name}")
+        print(f"    Got: {entered}")
+        # Last resort: JavaScript
+        driver.execute_script(
+            "arguments[0].value = arguments[1]; "
+            "arguments[0].dispatchEvent(new Event('input', {bubbles: true})); "
+            "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));",
+            github_input, folder_name
+        )
+        time.sleep(0.3)
+        entered = github_input.get_attribute("value").strip()
+
+    if entered != folder_name:
+        print(f"    STILL mismatched after retry. Skipping this template.")
         return False
 
-    # Click Update button
-    save_btn = None
-
-    # Try common button selectors
-    for sel in ["button[type='submit']", "input[type='submit']"]:
-        try:
-            btns = driver.find_elements(By.CSS_SELECTOR, sel)
-            for btn in btns:
-                text = btn.text.strip().lower() or btn.get_attribute("value").strip().lower()
-                if "update" in text or "save" in text:
-                    save_btn = btn
-                    break
-            if save_btn:
-                break
-        except Exception:
-            continue
-
-    # Try XPath for links/buttons with "Update" text
-    if not save_btn:
-        try:
-            save_btn = driver.find_element(
-                By.XPATH,
-                "//button[contains(text(),'Update')] | "
-                "//input[contains(@value,'Update')] | "
-                "//a[contains(text(),'Update')]"
-            )
-        except Exception:
-            pass
+    # Find and click Update button
+    save_btn = find_submit_button(driver)
 
     if not save_btn:
         print(f"    Could not find Update button")
         return False
 
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", save_btn)
+    time.sleep(0.2)
     save_btn.click()
-    time.sleep(1.5)
+    time.sleep(2)
 
-    print(f"    Set to: {folder_name}")
+    print(f"    Done!")
     return True
 
 
