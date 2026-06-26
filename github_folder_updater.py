@@ -10,6 +10,9 @@ from selenium.webdriver.support import expected_conditions as EC
 
 PAGE_WAIT = 15
 
+TEMPLATE_TYPES = ["PDF", "Static PDF", "Email", "Archive", "Video", "General"]
+DEFAULT_TYPES = {"PDF", "Email", "Video", "General"}
+
 WELCOME = """
 +==============================================================+
 |       Dokio GitHub Folder Name Updater Script  v1.0           |
@@ -24,7 +27,7 @@ WELCOME = """
 |    - Fills in the 'GitHub repo folder' field with:            |
 |      DokioID - Template Name                                  |
 |    - Clicks 'Update' to save                                  |
-|    - Skips Static PDF and Archive templates                   |
+|    - Choose which template types to update (multi-select)      |
 |    - Skips templates that already have a folder name set       |
 |                                                               |
 |  NOTE: Run template_downloader.py first! This script reuses   |
@@ -71,6 +74,67 @@ def choose_hub():
         print(f"  Environment: {env}")
         print(f"  Hub URL    : {base_url}")
         return hub_name, base_url, templates_url
+
+
+def classify_type(details_text):
+    """Map a row's Details text to one of TEMPLATE_TYPES, or None if unknown.
+
+    Order matters: 'Static PDF' rows also contain 'pdf', so check static first.
+    """
+    t = details_text.lower()
+    if "static pdf" in t:
+        return "Static PDF"
+    if "pdf" in t:
+        return "PDF"
+    if "email" in t:
+        return "Email"
+    if "archive" in t:
+        return "Archive"
+    if "video" in t:
+        return "Video"
+    if "general" in t:
+        return "General"
+    return None
+
+
+def choose_types():
+    print("\nWhich template types? (comma-separated, or 'all')")
+    for i, t in enumerate(TEMPLATE_TYPES, 1):
+        print(f"  [{i}] {t}")
+    print("\n  Enter = default (PDF, Email, Video, General - skips Static PDF & Archive)")
+    while True:
+        val = input("\n  Types: ").strip().lower()
+        if val == "":
+            return set(DEFAULT_TYPES)
+        if val == "all":
+            return set(TEMPLATE_TYPES)
+
+        parts = [p.strip() for p in val.split(",") if p.strip()]
+        selected = set()
+        ok = True
+        for p in parts:
+            if not p.isdigit() or not (1 <= int(p) <= len(TEMPLATE_TYPES)):
+                ok = False
+                break
+            selected.add(TEMPLATE_TYPES[int(p) - 1])
+
+        if ok and selected:
+            return selected
+        print("  Invalid. Enter numbers 1-6, 'all', or press Enter for default.")
+
+
+def flush_input():
+    """Discard any buffered/type-ahead stdin so prompts read only fresh input.
+
+    The page scan can take a while; keys pressed during it get buffered and
+    would otherwise be consumed by the next input() (e.g. a stray Enter reads
+    as '' and cancels the run).
+    """
+    try:
+        import termios
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)
+    except (ImportError, OSError):
+        pass
 
 
 def check_debug_browser():
@@ -122,7 +186,7 @@ def sanitize_folder_name(name):
     return name.strip()
 
 
-def collect_all_templates(driver, templates_url):
+def collect_all_templates(driver, templates_url, selected_types):
     all_templates = []
     page = 1
 
@@ -162,7 +226,8 @@ def collect_all_templates(driver, templates_url):
                 except Exception:
                     details_text = ""
 
-                if "static" in details_text or "archive" in details_text:
+                row_type = classify_type(details_text)
+                if row_type not in selected_types:
                     skipped += 1
                     continue
 
@@ -180,7 +245,7 @@ def collect_all_templates(driver, templates_url):
             except Exception:
                 continue
 
-        print(f"    {added} added, {skipped} skipped (Static/Archive)")
+        print(f"    {added} added, {skipped} skipped (type not selected)")
 
         try:
             driver.find_element(By.XPATH, f"//a[contains(@href,'page={page + 1}')]")
@@ -451,9 +516,12 @@ if __name__ == "__main__":
     print(WELCOME)
 
     hub_name, base_url, templates_url = choose_hub()
+    selected_types = choose_types()
+    types_label = ", ".join(t for t in TEMPLATE_TYPES if t in selected_types)
 
     print(f"\n" + "-" * 60)
-    print(f"  Hub : {hub_name} ({base_url})")
+    print(f"  Hub   : {hub_name} ({base_url})")
+    print(f"  Types : {types_label}")
     print("-" * 60)
 
     print(f"\nConnecting to browser...")
@@ -467,14 +535,15 @@ if __name__ == "__main__":
 
     try:
         print(f"\nScanning templates at {templates_url}...")
-        templates = collect_all_templates(driver, templates_url)
+        templates = collect_all_templates(driver, templates_url, selected_types)
 
         if not templates:
             print("No templates found. Check hub name and make sure you're logged in.")
             sys.exit(0)
 
+        flush_input()
         confirm = input(f"\nReady to update {len(templates)} templates. Continue? (y/n): ").strip().lower()
-        if confirm != "y":
+        if confirm not in ("y", "yes"):
             print("Cancelled.")
             sys.exit(0)
 

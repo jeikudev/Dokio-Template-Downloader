@@ -25,8 +25,8 @@ WELCOME = """
 |  What this script does:                                       |
 |    - Type a hub name like 'bupa-sam' or 'poolwerx'            |
 |    - Pick your browser - it launches with remote debugging    |
+|    - Choose which template types to download (multi-select)    |
 |    - Scans ALL pages of templates automatically               |
-|    - Skips Static PDF and Archive templates                   |
 |    - Downloads, unzips into properly named folders            |
 |    - Folder named: 746K64 - Template Name                     |
 |    - Files inside keep their original names                   |
@@ -35,6 +35,9 @@ WELCOME = """
 |                                                               |
 +==============================================================+
 """
+
+TEMPLATE_TYPES = ["PDF", "Static PDF", "Email", "Archive", "Video", "General"]
+DEFAULT_TYPES = {"PDF", "Email", "Video", "General"}
 
 BROWSERS = {
     "1": {
@@ -48,6 +51,10 @@ BROWSERS = {
     "3": {
         "name": "Brave",
         "binary": "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    },
+    "4": {
+        "name": "Helium",
+        "binary": "/Applications/Helium.app/Contents/MacOS/Helium",
     },
 }
 
@@ -104,7 +111,54 @@ def choose_browser():
         choice = input("\n  Enter number: ").strip()
         if choice in BROWSERS:
             return BROWSERS[choice]
-        print("  Please enter a valid number (1-3).")
+        print(f"  Please enter a valid number (1-{len(BROWSERS)}).")
+
+
+def classify_type(details_text):
+    """Map a row's Details text to one of TEMPLATE_TYPES, or None if unknown.
+
+    Order matters: 'Static PDF' rows also contain 'pdf', so check static first.
+    """
+    t = details_text.lower()
+    if "static pdf" in t:
+        return "Static PDF"
+    if "pdf" in t:
+        return "PDF"
+    if "email" in t:
+        return "Email"
+    if "archive" in t:
+        return "Archive"
+    if "video" in t:
+        return "Video"
+    if "general" in t:
+        return "General"
+    return None
+
+
+def choose_types():
+    print("\nWhich template types? (comma-separated, or 'all')")
+    for i, t in enumerate(TEMPLATE_TYPES, 1):
+        print(f"  [{i}] {t}")
+    print("\n  Enter = default (PDF, Email, Video, General - skips Static PDF & Archive)")
+    while True:
+        val = input("\n  Types: ").strip().lower()
+        if val == "":
+            return set(DEFAULT_TYPES)
+        if val == "all":
+            return set(TEMPLATE_TYPES)
+
+        parts = [p.strip() for p in val.split(",") if p.strip()]
+        selected = set()
+        ok = True
+        for p in parts:
+            if not p.isdigit() or not (1 <= int(p) <= len(TEMPLATE_TYPES)):
+                ok = False
+                break
+            selected.add(TEMPLATE_TYPES[int(p) - 1])
+
+        if ok and selected:
+            return selected
+        print("  Invalid. Enter numbers 1-6, 'all', or press Enter for default.")
 
 
 def is_debug_browser_running():
@@ -205,7 +259,7 @@ def get_session(driver, base_url):
     return session
 
 
-def collect_all_templates(driver, templates_url):
+def collect_all_templates(driver, templates_url, selected_types):
     all_templates = []
     page = 1
 
@@ -245,7 +299,8 @@ def collect_all_templates(driver, templates_url):
                 except Exception:
                     details_text = ""
 
-                if "static" in details_text or "archive" in details_text:
+                row_type = classify_type(details_text)
+                if row_type not in selected_types:
                     skipped += 1
                     continue
 
@@ -257,7 +312,7 @@ def collect_all_templates(driver, templates_url):
             except Exception:
                 continue
 
-        print(f"    {added} added, {skipped} skipped (Static/Archive)")
+        print(f"    {added} added, {skipped} skipped (type not selected)")
 
         try:
             driver.find_element(By.XPATH, f"//a[contains(@href,'page={page + 1}')]")
@@ -359,10 +414,13 @@ if __name__ == "__main__":
 
     hub_name, base_url, templates_url, download_dir = choose_hub()
     browser_info = choose_browser()
+    selected_types = choose_types()
+    types_label = ", ".join(t for t in TEMPLATE_TYPES if t in selected_types)
 
     print(f"\n" + "-" * 60)
     print(f"  Hub      : {hub_name} ({base_url})")
     print(f"  Browser  : {browser_info['name']}")
+    print(f"  Types    : {types_label}")
     print(f"  Save to  : {download_dir}")
     print("-" * 60)
 
@@ -378,7 +436,7 @@ if __name__ == "__main__":
 
     try:
         print(f"\nScanning templates at {templates_url}...")
-        templates = collect_all_templates(driver, templates_url)
+        templates = collect_all_templates(driver, templates_url, selected_types)
 
         if not templates:
             print("No templates found. Check hub name and make sure you're logged in.")

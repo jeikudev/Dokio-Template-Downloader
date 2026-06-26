@@ -13,8 +13,9 @@ Two Python scripts for managing Dokio templates. Run them in order — the first
 - Choose staging or production environment
 - Type a hub name like `ipa` or `poolwerx` — no full URLs needed
 - Picks your browser and launches it with remote debugging
+- Choose which template types to download — PDF, Static PDF, Email, Archive, Video, General (select multiple)
+- Default selection downloads PDF, Email, Video, General (skips Static PDF & Archive)
 - Scans ALL pages automatically (however many there are)
-- Skips Static PDF and Archive templates
 - Downloads, unzips, and organizes into named folders
 - Folder: `Q33D3U - Hyperlocal Email 2025` / files inside: original names untouched
 - Saves to `~/Documents/Dokio Templates/<hub-name>-templates/`
@@ -26,7 +27,7 @@ Two Python scripts for managing Dokio templates. Run them in order — the first
 - Fills in the "GitHub repo folder" field with `DokioID - Template Name`
 - Clicks Update to save
 - Skips templates that already have a value set
-- Skips Static PDF and Archive templates
+- Choose which template types to update — PDF, Static PDF, Email, Archive, Video, General (select multiple)
 
 ---
 
@@ -35,7 +36,7 @@ Two Python scripts for managing Dokio templates. Run them in order — the first
 - **Mac**
 - **Python 3.9+** — already on Mac, check with `python3 --version`
 - **Git** — already on Mac
-- **One of these browsers:** Google Chrome, Chrome Canary, or Brave
+- **One of these browsers:** Google Chrome, Chrome Canary, Brave, or Helium
 - **Okta access** to the Dokio admin panel
 
 ---
@@ -104,6 +105,7 @@ Which browser?
   [1] Google Chrome  (installed)
   [2] Chrome Canary  (installed)
   [3] Brave          (installed)
+  [4] Helium         (installed)
 
   Enter number: 1
 
@@ -122,9 +124,9 @@ Once you press Enter it runs automatically:
 ```
 Scanning templates...
   Scanning page 1...
-    18 added, 2 skipped (Static/Archive)
+    18 added, 2 skipped (type not selected)
   Scanning page 2...
-    20 added, 0 skipped (Static/Archive)
+    20 added, 0 skipped (type not selected)
   ...
   Total: 142 templates across 8 page(s).
 
