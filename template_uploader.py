@@ -141,6 +141,19 @@ def choose_folder():
         print(f"  Not a folder: {path}")
 
 
+def resolve_folder(hub_name):
+    """Use the folder the downloader creates for this hub; ask only if missing.
+
+    Downloader saves to ~/Documents/Dokio Templates/<hub>-templates/ - reuse it.
+    """
+    default_dir = Path.home() / "Documents" / "Dokio Templates" / f"{hub_name}-templates"
+    if default_dir.is_dir():
+        print(f"\n  Using downloaded folder: {default_dir}")
+        return str(default_dir)
+    print(f"\n  No downloaded folder at: {default_dir}")
+    return choose_folder()
+
+
 def find_folder(root, template_id):
     """Find the subfolder in root matching template_id.
 
@@ -312,9 +325,27 @@ def upload_one(driver, base_url, segment, template_id, zip_path):
 
     # Leave 'Major change?' unchecked. Click Confirm upload.
     confirm_btn.click()
-    time.sleep(3)
-    print("    Confirmed.")
-    return True
+
+    # Wait until the confirm actually completes before moving on. The button
+    # shows "Submitting" then the page redirects off the upload flow to the
+    # template detail page. Verify both: button gone AND url left the flow.
+    try:
+        WebDriverWait(driver, 120).until(EC.staleness_of(confirm_btn))
+    except Exception:
+        pass
+
+    done_end = time.time() + 120
+    while time.time() < done_end:
+        url = driver.current_url
+        left_flow = not any(x in url for x in ("/upload", "stage_upload", "validate_upload"))
+        no_btn = not driver.find_elements(By.XPATH, "//button[normalize-space()='Confirm upload']")
+        if left_flow and no_btn:
+            print("    Confirmed.")
+            return True
+        time.sleep(2)
+
+    print("    FAILED: confirm did not complete (still on upload screen).")
+    return False
 
 
 def main():
@@ -323,7 +354,7 @@ def main():
     hub_name, base_url = choose_hub()
     browser_info = choose_browser()
     ids = choose_ids()
-    root = choose_folder()
+    root = resolve_folder(hub_name)
 
     # Resolve each id -> (folder, segment) offline before touching the browser.
     tmp_dir = tempfile.mkdtemp(prefix="dokio-upload-")
