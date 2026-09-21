@@ -323,26 +323,29 @@ def upload_one(driver, base_url, segment, template_id, zip_path):
         print("    FAILED: confirm screen never appeared (timed out).")
         return False
 
-    # Leave 'Major change?' unchecked. Click Confirm upload.
-    confirm_btn.click()
-
-    # Wait until the confirm actually completes before moving on. The button
-    # shows "Submitting" then the page redirects off the upload flow to the
-    # template detail page. Verify both: button gone AND url left the flow.
-    try:
-        WebDriverWait(driver, 120).until(EC.staleness_of(confirm_btn))
-    except Exception:
-        pass
-
+    # Leave 'Major change?' unchecked. Click Confirm upload - and keep clicking.
+    # A single click can no-op if React hasn't wired the handler yet or the
+    # button sits under the fixed ConfirmBar / off-screen, so re-find and
+    # re-click each pass until the page actually leaves the upload flow.
     done_end = time.time() + 120
     while time.time() < done_end:
         url = driver.current_url
         left_flow = not any(x in url for x in ("/upload", "stage_upload", "validate_upload"))
-        no_btn = not driver.find_elements(By.XPATH, "//button[normalize-space()='Confirm upload']")
-        if left_flow and no_btn:
+        btns = driver.find_elements(By.XPATH, "//button[normalize-space()='Confirm upload']")
+        if left_flow and not btns:
             print("    Confirmed.")
             return True
-        time.sleep(2)
+        if btns:
+            btn = btns[0]
+            try:
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                btn.click()
+            except Exception:
+                try:
+                    driver.execute_script("arguments[0].click();", btn)
+                except Exception:
+                    pass
+        time.sleep(3)
 
     print("    FAILED: confirm did not complete (still on upload screen).")
     return False
