@@ -351,6 +351,37 @@ def upload_one(driver, base_url, segment, template_id, zip_path):
     return False
 
 
+def run_jobs(driver, base_url, jobs):
+    """Upload each job. Returns (success, failed) as lists of job tuples."""
+    success, failed = [], []
+    for i, (tid, segment, zip_path) in enumerate(jobs, 1):
+        print(f"\n[{i}/{len(jobs)}] {tid}  ({segment})")
+        try:
+            ok = upload_one(driver, base_url, segment, tid, zip_path)
+        except Exception as e:
+            print(f"    ERROR: {e}")
+            ok = False
+        (success if ok else failed).append((tid, segment, zip_path))
+    return success, failed
+
+
+def ask_retry(failed):
+    """Show the failed uploads and ask whether to re-upload them or quit."""
+    print("\n  Failed uploads:")
+    for tid, segment, _ in failed:
+        print(f"    - {tid}  ({segment})")
+    print("\n  What now?")
+    print("  [1] Re-upload failed")
+    print("  [2] Quit")
+    while True:
+        val = input("\n  Enter number: ").strip()
+        if val == "1":
+            return True
+        if val == "2":
+            return False
+        print("  Please enter 1 or 2.")
+
+
 def main():
     print(WELCOME)
 
@@ -409,29 +440,29 @@ def main():
         print("Make sure the browser is open and you're logged in.")
         sys.exit(1)
 
-    success, failed = [], []
+    all_success, failed = [], []
     try:
-        for i, (tid, segment, zip_path) in enumerate(jobs, 1):
-            print(f"\n[{i}/{len(jobs)}] {tid}  ({segment})")
-            try:
-                if upload_one(driver, base_url, segment, tid, zip_path):
-                    success.append(tid)
-                else:
-                    failed.append(tid)
-            except Exception as e:
-                print(f"    ERROR: {e}")
-                failed.append(tid)
+        pending = jobs
+        while pending:
+            success, failed = run_jobs(driver, base_url, pending)
+            all_success.extend(success)
+            if not failed:
+                break
+            if not ask_retry(failed):
+                break
+            print(f"\nRe-uploading {len(failed)} failed template(s)...")
+            pending = failed
     except KeyboardInterrupt:
         print("\n\nStopped by user.")
     finally:
         print("\n" + "=" * 60)
-        print(f"  Uploaded : {len(success)}")
+        print(f"  Uploaded : {len(all_success)}")
         print(f"  Failed   : {len(failed)}")
         print(f"  Skipped  : {len(skipped)}")
         if failed:
             print("\n  Failed:")
-            for t in failed:
-                print(f"    - {t}")
+            for tid, segment, _ in failed:
+                print(f"    - {tid}  ({segment})")
         if skipped:
             print("\n  Skipped:")
             for t, reason in skipped:
